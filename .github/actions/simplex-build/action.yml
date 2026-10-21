@@ -1,0 +1,144 @@
+name: 'SimpleX Build'
+
+description: 'Build and test webrtc-java with the natives of one platform and upload the jars as artifacts'
+
+inputs:
+  platform-name:
+    description: 'The target platform.'
+    required: true
+
+  profile:
+    description: 'The Maven profile that selects a cross compiled classifier. Empty for the runner''s own.'
+    required: false
+    default: ''
+
+  version:
+    description: 'The project version to build. Empty keeps the version of the poms.'
+    required: false
+    default: ''
+
+  test:
+    description: 'Whether to run the tests, which need natives this runner can load.'
+    required: false
+    default: 'false'
+
+  test-java-architecture:
+    description: 'The JDK architecture to run the tests with, when it differs from the runner''s.'
+    required: false
+    default: ''
+
+  upload-main-jar:
+    description: 'Whether to upload the platform independent jar too.'
+    required: false
+    default: 'false'
+
+  java-version:
+    description: 'The Java build version.'
+    required: false
+    default: '17'
+
+  retention-days:
+    description: 'How long the artifacts are kept.'
+    required: false
+    default: '1'
+
+runs:
+  using: "composite"
+  steps:
+    - id: libwebrtc-cache
+      name: Restore libwebrtc
+      uses: ./.github/actions/simplex-libwebrtc-cache
+      with:
+        platform-name: ${{ inputs.platform-name }}
+
+    - name: Set up Maven cache
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.m2/repository
+          !~/.m2/repository/dev/onvoid/webrtc
+        key: maven-${{ inputs.platform-name }}-${{ hashFiles('**/pom.xml') }}
+        restore-keys: maven-${{ inputs.platform-name }}-
+
+    - id: jdk-test
+      name: Set up JDK ${{ inputs.java-version }} (${{ inputs.test-java-architecture }}, for the tests)
+      if: inputs.test-java-architecture != ''
+      uses: actions/setup-java@v5
+      with:
+        architecture: ${{ inputs.test-java-architecture }}
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+
+    # Set up last, so that it is the JAVA_HOME the build runs with.
+    - name: Set up JDK ${{ inputs.java-version }}
+      uses: actions/setup-java@v5
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+
+    - name: Check rustup
+      run: rustup --version
+      shell: bash
+
+    - name: Install the Rust toolchain
+      if: hashFiles('webrtc-jni/src/main/rust/rust-toolchain.toml') != ''
+      working-directory: webrtc-jni/src/main/rust
+      run: rustup toolchain install
+      shell: bash
+
+    - name: Set up Rust cache
+      if: hashFiles('webrtc-jni/src/main/rust/Cargo.lock') != ''
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: webrtc-jni/src/main/rust -> target
+        key: ${{ inputs.platform-name }}
+
+    # After the cache steps, whose keys hash the poms.
+    - name: Set the project version
+      if: inputs.version != ''
+      env:
+        VERSION: ${{ inputs.version }}
+      run: mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+      shell: bash
+
+    - name: Build
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: mvn -B package -DskipTests -pl webrtc-jni,webrtc ${PROFILE:+-P$PROFILE}
+      shell: bash
+
+    # Saved before the tests, so that a test failure keeps an hour long build.
+    # Caches saved by a tag are visible to that tag only.
+    - name: Save libwebrtc cache
+      if: steps.libwebrtc-cache.outputs.cache-hit != 'true' && github.ref_type != 'tag'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/webrtc/build
+        key: ${{ steps.libwebrtc-cache.outputs.cache-primary-key }}
+
+    - name: Test
+      if: inputs.test == 'true'
+      env:
+        PROFILE: ${{ inputs.profile }}
+        TEST_JAVA_HOME: ${{ steps.jdk-test.outputs.path }}
+      run: JAVA_HOME="${TEST_JAVA_HOME:-$JAVA_HOME}" mvn -B jar:jar surefire:test -pl webrtc-jni,webrtc ${PROFILE:+-P$PROFILE}
+      shell: bash
+
+    - name: Upload native library jar
+      uses: actions/upload-artifact@v7
+      with:
+        name: natives-${{ inputs.platform-name }}
+        path: webrtc-jni/target/webrtc-java-*.jar
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+        overwrite: true
+
+    - name: Upload main jar
+      if: inputs.upload-main-jar == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: main-jar
+        path: webrtc/target/webrtc-java-*.jar
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+        overwrite: true

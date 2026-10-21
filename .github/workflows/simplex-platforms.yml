@@ -1,0 +1,125 @@
+name: SimpleX platforms
+
+# Builds webrtc-java for the platforms SimpleX Chat desktop ships on, tests each
+# on a runner that can load its natives, and uploads natives-<platform> and
+# main-jar artifacts. Called by simplex-build.yml and simplex-release.yml.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "The project version to build. Empty keeps the version of the poms."
+        type: string
+        default: ''
+      retention-days:
+        description: "How long the artifacts are kept."
+        type: number
+        default: 1
+
+jobs:
+  build:
+    name: build (${{ matrix.platform.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # profile: the Maven profile of a cross compiled classifier.
+        # test-java-architecture: the JDK that loads cross compiled natives
+        #   (Rosetta runs the Intel macOS tests on Apple Silicon).
+        platform:
+          - name: linux_x86-64
+            runs-on: ubuntu-22.04
+            test: true
+            main-jar: true
+          - name: linux_arm64
+            runs-on: ubuntu-22.04
+            profile: linux-aarch64
+          - name: macos_arm64
+            runs-on: macos-14
+            test: true
+          - name: macos_x86-64
+            runs-on: macos-14
+            profile: macos-cross-x86_64
+            test: true
+            test-java-architecture: x64
+          - name: windows_x86_64
+            runs-on: windows-2022
+            test: true
+    runs-on: ${{ matrix.platform.runs-on }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Prepare build
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/prepare-linux
+
+      - name: Prepare build
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/prepare-macos
+
+      - name: Prepare build
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/prepare-windows
+
+      - name: Maven build
+        uses: ./.github/actions/simplex-build
+        with:
+          platform-name: ${{ matrix.platform.name }}
+          profile: ${{ matrix.platform.profile }}
+          version: ${{ inputs.version }}
+          test: ${{ matrix.platform.test }}
+          test-java-architecture: ${{ matrix.platform.test-java-architecture }}
+          upload-main-jar: ${{ matrix.platform.main-jar }}
+          retention-days: ${{ inputs.retention-days }}
+
+  test-linux-arm64:
+    name: test (linux_arm64)
+    needs: build
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download natives
+        uses: actions/download-artifact@v8
+        with:
+          name: natives-linux_arm64
+          path: natives
+
+      # The natives open PulseAudio, libudev and libdbus at runtime only.
+      - name: Install runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-6 libxext6 libxfixes3 libxdamage1 libxtst6 libxrandr2 libxcomposite1 libglib2.0-0 libgbm1 libdrm2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Ensure Maven
+        run: |
+          if ! command -v mvn >/dev/null 2>&1; then
+            curl -sSLo maven.zip https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip
+            unzip -q maven.zip -d "$RUNNER_TEMP/maven"
+            echo "$RUNNER_TEMP/maven/apache-maven-3.9.9/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Set the project version
+        if: inputs.version != ''
+        env:
+          VERSION: ${{ inputs.version }}
+        run: mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      # webrtc-jni stays out of the reactor, so the natives come from the
+      # local repository and, for certain, from the test class path.
+      - name: Test
+        run: |
+          VERSION=$(sed -n '0,/<version>/s|.*<version>\([^<]*\)</version>.*|\1|p' pom.xml)
+          JAR="$PWD/natives/webrtc-java-$VERSION-linux-aarch64.jar"
+          mvn -B -q install:install-file -Dfile="$JAR" -DgroupId=dev.onvoid.webrtc \
+            -DartifactId=webrtc-java -Dversion="$VERSION" -Dpackaging=jar \
+            -Dclassifier=linux-aarch64
+          mvn -B -pl webrtc test -Dmaven.test.additionalClasspath="$JAR"
