@@ -16,6 +16,11 @@ on:
     paths-ignore: *paths-ignore
 
   workflow_dispatch:
+    inputs:
+      libwebrtc-artifact:
+        description: "Upload the linux_x86-64 libwebrtc install directory, to build the JNI library locally against it."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,3 +33,5 @@ concurrency:
 jobs:
   platforms:
     uses: ./.github/workflows/simplex-platforms.yml
+    with:
+      libwebrtc-artifact: ${{ inputs.libwebrtc-artifact == true }}

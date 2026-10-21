@@ -15,6 +15,10 @@ on:
         description: "How long the artifacts are kept."
         type: number
         default: 1
+      libwebrtc-artifact:
+        description: "Upload the linux_x86-64 libwebrtc install directory too."
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -72,6 +76,7 @@ jobs:
           test: ${{ matrix.platform.test }}
           test-java-architecture: ${{ matrix.platform.test-java-architecture }}
           upload-main-jar: ${{ matrix.platform.main-jar }}
+          upload-libwebrtc: ${{ inputs.libwebrtc-artifact && matrix.platform.name == 'linux_x86-64' }}
           retention-days: ${{ inputs.retention-days }}
 
   test-linux-arm64:
