@@ -823,3 +823,37 @@ fn system_default_in_use_when_created() {
     assert_eq!(adm.playout_in_use().as_deref(), Some(""));
     assert_eq!(adm.recording_in_use().as_deref(), Some(""));
 }
+
+#[test]
+#[ignore = "needs a dedicated PulseAudio server"]
+fn no_fallback_waits_for_absent_selected_device() {
+    let _server = serialize();
+    let _mic = Device::source("adm_mic", "Mic");
+    pactl(&["set-default-source", "adm_mic"]);
+    let events = ServerEvents::subscribe();
+    let changes = Notifications::default();
+    let adm = Adm::create();
+    assert_eq!(adm.set_devices_changed(Some(&changes)), SUCCESS);
+    adm.set_recording_fallback(false);
+    assert_eq!(adm.set_recording_device("adm_usb_mic"), SUCCESS);
+    changes.wait_until(|| adm.recording_in_use().is_none());
+    adm.start_recording();
+
+    // The worker handles events in order: once it lists the new sink, it has handled the start.
+    let _speaker = Device::sink("adm_speaker", "Speaker");
+    changes.wait_until(|| {
+        adm.playout_devices()
+            .is_some_and(|d| d.contains(&pair("Speaker", "adm_speaker")))
+    });
+    assert_eq!(
+        recording_sources(),
+        Vec::<String>::new(),
+        "no microphone open"
+    );
+
+    let _usb_mic = Device::source("adm_usb_mic", "USB-Mic");
+    changes.wait_until(|| adm.recording_in_use().as_deref() == Some("adm_usb_mic"));
+    events.wait_for("'new' on source-output");
+    assert_eq!(recording_sources(), ["adm_usb_mic"]);
+    assert_eq!(recording_corked(), [false]);
+}
