@@ -32,21 +32,26 @@ jobs:
         platform:
           - name: linux_x86-64
             runs-on: ubuntu-22.04
+            classifier: linux-x86_64
             test: true
             main-jar: true
           - name: linux_arm64
             runs-on: ubuntu-22.04
+            classifier: linux-aarch64
             profile: linux-aarch64
           - name: macos_arm64
             runs-on: macos-14
+            classifier: macos-aarch64
             test: true
           - name: macos_x86-64
             runs-on: macos-14
+            classifier: macos-x86_64
             profile: macos-cross-x86_64
             test: true
             test-java-architecture: x64
           - name: windows_x86_64
             runs-on: windows-2022
+            classifier: windows-x86_64
             test: true
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
@@ -71,6 +76,7 @@ jobs:
         uses: ./.github/actions/simplex-build
         with:
           platform-name: ${{ matrix.platform.name }}
+          classifier: ${{ matrix.platform.classifier }}
           profile: ${{ matrix.platform.profile }}
           version: ${{ inputs.version }}
           test: ${{ matrix.platform.test }}
