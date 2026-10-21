@@ -9,6 +9,38 @@ extern "C" {
 #endif
 /*
  * Class:     dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule
+ * Method:    setPlayoutFallbackEnabled
+ * Signature: (Z)V
+ */
+JNIEXPORT void JNICALL Java_dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule_setPlayoutFallbackEnabled
+  (JNIEnv *, jobject, jboolean);
+
+/*
+ * Class:     dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule
+ * Method:    setRecordingFallbackEnabled
+ * Signature: (Z)V
+ */
+JNIEXPORT void JNICALL Java_dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule_setRecordingFallbackEnabled
+  (JNIEnv *, jobject, jboolean);
+
+/*
+ * Class:     dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule
+ * Method:    getPlayoutDeviceInUse
+ * Signature: ()Ldev/onvoid/webrtc/media/audio/AudioDevice;
+ */
+JNIEXPORT jobject JNICALL Java_dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule_getPlayoutDeviceInUse
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule
+ * Method:    getRecordingDeviceInUse
+ * Signature: ()Ldev/onvoid/webrtc/media/audio/AudioDevice;
+ */
+JNIEXPORT jobject JNICALL Java_dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule_getRecordingDeviceInUse
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     dev_onvoid_webrtc_media_audio_CubebAudioDeviceModule
  * Method:    initialize
  * Signature: (Ldev/onvoid/webrtc/media/audio/AudioDevicesChangedListener;)V
  */
