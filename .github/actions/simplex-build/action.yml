@@ -173,7 +173,9 @@ runs:
       env:
         PROFILE: ${{ inputs.profile }}
         TEST_JAVA_HOME: ${{ steps.jdk-test.outputs.path }}
-      run: JAVA_HOME="${TEST_JAVA_HOME:-$JAVA_HOME}" mvn -B jar:jar surefire:test -pl webrtc-jni,webrtc ${PROFILE:+-P$PROFILE}
+        # Windows runners have no audio endpoint, and cubeb's wasapi_init fails without a default one.
+        TEST_FILTER: ${{ runner.os == 'Windows' && '-Dtest=!CubebAudioDeviceModuleTest -Dsurefire.failIfNoSpecifiedTests=false' || '' }}
+      run: JAVA_HOME="${TEST_JAVA_HOME:-$JAVA_HOME}" mvn -B jar:jar surefire:test -pl webrtc-jni,webrtc ${PROFILE:+-P$PROFILE} $TEST_FILTER
       shell: bash
 
     - name: Upload native library jar
