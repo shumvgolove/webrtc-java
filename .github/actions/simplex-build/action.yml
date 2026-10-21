@@ -141,15 +141,31 @@ runs:
         path: ~/webrtc/build
         key: ${{ steps.libwebrtc-cache.outputs.cache-primary-key }}
 
-    # The cubeb audio device module tests need a sound server with devices.
+    # The Rust C API tests need a sound server without devices, the Java tests
+    # one with devices; -n skips the default configuration and its devices.
     - name: Start PulseAudio
       if: inputs.test == 'true' && runner.os == 'Linux'
       run: |
-        sudo apt-get install -y pulseaudio pulseaudio-utils
-        pulseaudio --start --exit-idle-time=-1
+        sudo apt-get install -y libpulse-dev pulseaudio pulseaudio-utils
+        pulseaudio -n --daemonize=yes --exit-idle-time=-1 -L module-native-protocol-unix
+        pactl info
+      shell: bash
+
+    - name: Test the Rust crate
+      if: inputs.test == 'true' && runner.os == 'Linux' && hashFiles('webrtc-jni/src/main/rust/Cargo.lock') != ''
+      working-directory: webrtc-jni/src/main/rust
+      env:
+        CARGO_TARGET_DIR: ${{ github.workspace }}/webrtc-jni/target/${{ inputs.classifier }}/cargo
+      run: |
+        cargo test --locked
+        cargo test --locked --test c_api -- --ignored
+      shell: bash
+
+    - name: Add PulseAudio devices
+      if: inputs.test == 'true' && runner.os == 'Linux'
+      run: |
         pactl load-module module-null-sink sink_name=ci_sink
         pactl load-module module-null-source source_name=ci_source
-        pactl info
       shell: bash
 
     - name: Test
