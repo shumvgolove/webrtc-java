@@ -1,0 +1,30 @@
+name: SimpleX build
+
+on:
+  push:
+    branches:
+      - '**'
+    paths-ignore: &paths-ignore
+      - "docs/**"
+      - "**.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/workflows/pages.yml"
+
+  pull_request:
+    branches:
+      - simplex
+    paths-ignore: *paths-ignore
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# simplex runs are never cancelled: they refresh the caches every branch reads.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/simplex' }}
+
+jobs:
+  platforms:
+    uses: ./.github/workflows/simplex-platforms.yml
