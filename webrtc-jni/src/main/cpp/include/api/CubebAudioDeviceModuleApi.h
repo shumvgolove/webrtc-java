@@ -22,6 +22,15 @@ void cubeb_adm_release(const CubebAdm* adm);
 // The AudioDeviceCallbacks table of audio_device_intf.h, called with the handle as adm_borrowed.
 const void* cubeb_adm_callbacks(void);
 
+// WebRTC's AudioDeviceModule enumeration: the system default first, as "default (<name>)" with guid
+// "", then every device. name and guid are kAdmMaxDeviceNameSize and kAdmMaxGuidSize (128) bytes;
+// names are cut at a character boundary, and an ID that does not fit is replaced by a stable hash
+// that cubeb_adm_set_*_device accepts.
+int16_t cubeb_adm_playout_devices(const CubebAdm* adm);
+int16_t cubeb_adm_recording_devices(const CubebAdm* adm);
+int32_t cubeb_adm_playout_device_name(const CubebAdm* adm, uint16_t index, char name[128], char guid[128]);
+int32_t cubeb_adm_recording_device_name(const CubebAdm* adm, uint16_t index, char name[128], char guid[128]);
+
 // An empty id selects the system default device, which follows the OS default.
 int32_t cubeb_adm_set_playout_device(const CubebAdm* adm, const char* id);
 int32_t cubeb_adm_set_recording_device(const CubebAdm* adm, const char* id);
