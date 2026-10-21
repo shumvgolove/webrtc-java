@@ -57,6 +57,8 @@ if(LINUX)
         "AR_${RUST_TARGET_ENV}=${CMAKE_AR}"
         "CFLAGS_${RUST_TARGET_ENV}=${CUBEB_CFLAGS}"
         "CXXFLAGS_${RUST_TARGET_ENV}=${CUBEB_CXXFLAGS}"
+        # cubeb's CMake links test executables, which the host ld cannot do for a cross target.
+        "LDFLAGS=-fuse-ld=lld"
     )
 elseif(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
     list(APPEND CARGO_ENV "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
