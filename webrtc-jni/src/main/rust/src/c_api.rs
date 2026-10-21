@@ -10,7 +10,7 @@ use anyhow::{anyhow, bail};
 use crate::{
     core::util::truncate_for_logging,
     webrtc::{
-        audio_device_module::{AudioDeviceModule, SYSTEM_DEFAULT_DEVICE_ID},
+        audio_device_module::{AudioDeviceModule, DeviceInUse, SYSTEM_DEFAULT_DEVICE_ID},
         audio_device_module_callbacks::{AUDIO_DEVICE_CBS_PTR, decrement_adm_ref_count},
         peer_connection_factory::{AudioDevice, AudioDeviceList, AudioDeviceObserver},
         ptr::Borrowed,
@@ -23,6 +23,10 @@ pub type CubebAdmDevicesChanged = extern "C" fn(context: *mut c_void);
 
 const SUCCESS: i32 = 0;
 const FAILURE: i32 = -1;
+
+// CubebAdmDeviceInUse
+const NO_DEVICE_IN_USE: i32 = 0;
+const DEVICE_IN_USE: i32 = 1;
 
 // Request IDs only tag Signal Desktop's promise results, which this API does not report.
 const UNUSED_REQUEST_ID: u32 = 0;
@@ -266,6 +270,87 @@ pub unsafe extern "C" fn cubeb_adm_set_devices_changed_callback(
         unsafe { lock(adm) }.and_then(|mut adm| adm.register_audio_device_callback(observer)),
         "cubeb_adm_set_devices_changed_callback",
     )
+}
+
+/// # Safety
+/// `adm` is NULL or a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cubeb_adm_set_playout_fallback(
+    adm: *const CubebAdm,
+    enabled: bool,
+) -> i32 {
+    status(
+        unsafe { lock(adm) }.and_then(|mut adm| adm.set_playout_fallback(enabled)),
+        "cubeb_adm_set_playout_fallback",
+    )
+}
+
+/// # Safety
+/// `adm` is NULL or a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cubeb_adm_set_recording_fallback(
+    adm: *const CubebAdm,
+    enabled: bool,
+) -> i32 {
+    status(
+        unsafe { lock(adm) }.and_then(|mut adm| adm.set_recording_fallback(enabled)),
+        "cubeb_adm_set_recording_fallback",
+    )
+}
+
+/// # Safety
+/// `adm` as for [`lock`]; `id` is NULL or valid for writing `id_size` bytes.
+unsafe fn write_device_in_use(
+    adm: *const CubebAdm,
+    direction: Direction,
+    id: *mut c_char,
+    id_size: usize,
+) -> anyhow::Result<i32> {
+    let in_use = {
+        let adm = unsafe { lock(adm) }?;
+        match direction {
+            Direction::Playout => adm.playout_device_in_use(),
+            Direction::Recording => adm.recording_device_in_use(),
+        }
+    };
+    let (result, device_id) = match in_use {
+        DeviceInUse::SystemDefault => (DEVICE_IN_USE, SYSTEM_DEFAULT_DEVICE_ID.to_string()),
+        DeviceInUse::Device(unique_id) => (DEVICE_IN_USE, webrtc_device_id(&unique_id)),
+        DeviceInUse::Unavailable => (NO_DEVICE_IN_USE, String::new()),
+    };
+    if device_id.len() >= id_size {
+        bail!("{id_size}-byte buffer too small for the {direction:?} device ID");
+    }
+    unsafe { copy_c_string(&device_id, id, id_size) }?;
+    Ok(result)
+}
+
+/// # Safety
+/// `adm` is NULL or a live handle; `id` is NULL or valid for writing `id_size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cubeb_adm_get_playout_device_in_use(
+    adm: *const CubebAdm,
+    id: *mut c_char,
+    id_size: usize,
+) -> i32 {
+    unsafe { write_device_in_use(adm, Direction::Playout, id, id_size) }.unwrap_or_else(|e| {
+        error!("cubeb_adm_get_playout_device_in_use failed: {e:?}");
+        FAILURE
+    })
+}
+
+/// # Safety
+/// `adm` is NULL or a live handle; `id` is NULL or valid for writing `id_size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cubeb_adm_get_recording_device_in_use(
+    adm: *const CubebAdm,
+    id: *mut c_char,
+    id_size: usize,
+) -> i32 {
+    unsafe { write_device_in_use(adm, Direction::Recording, id, id_size) }.unwrap_or_else(|e| {
+        error!("cubeb_adm_get_recording_device_in_use failed: {e:?}");
+        FAILURE
+    })
 }
 
 /// # Safety
