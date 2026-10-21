@@ -448,9 +448,10 @@ fn validates_device_selection() {
     assert_eq!(adm.set_recording_device(""), SUCCESS);
     assert_eq!(adm.set_recording_device("adm_mic"), SUCCESS);
 
-    assert_eq!(adm.set_playout_device("adm_missing"), FAILURE);
-    assert_eq!(adm.set_recording_device("adm_speaker"), FAILURE);
-    assert_eq!(adm.set_recording_device("adm_speaker.monitor"), FAILURE);
+    // IDs of absent devices are kept as the selection.
+    assert_eq!(adm.set_playout_device("adm_missing"), SUCCESS);
+    assert_eq!(adm.set_recording_device("adm_speaker"), SUCCESS);
+    assert_eq!(adm.set_recording_device("adm_speaker.monitor"), SUCCESS);
     assert_eq!(
         unsafe { cubeb_adm_set_playout_device(adm.handle, std::ptr::null()) },
         FAILURE

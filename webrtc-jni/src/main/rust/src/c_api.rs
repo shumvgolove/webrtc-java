@@ -7,14 +7,12 @@ use std::{
 
 use anyhow::{anyhow, bail};
 
-use crate::{
-    core::util::truncate_for_logging,
-    webrtc::{
-        audio_device_module::{AudioDeviceModule, DeviceInUse, SYSTEM_DEFAULT_DEVICE_ID},
-        audio_device_module_callbacks::{AUDIO_DEVICE_CBS_PTR, decrement_adm_ref_count},
-        peer_connection_factory::{AudioDevice, AudioDeviceList, AudioDeviceObserver},
-        ptr::Borrowed,
-    },
+use crate::webrtc::{
+    audio_device_module::{AudioDeviceModule, DeviceInUse, SYSTEM_DEFAULT_DEVICE_ID},
+    audio_device_module_callbacks::{AUDIO_DEVICE_CBS_PTR, decrement_adm_ref_count},
+    audio_device_module_utils::{ADM_MAX_GUID_SIZE, webrtc_device_id},
+    peer_connection_factory::{AudioDevice, AudioDeviceList, AudioDeviceObserver},
+    ptr::Borrowed,
 };
 
 pub type CubebAdm = Mutex<AudioDeviceModule>;
@@ -31,14 +29,8 @@ const DEVICE_IN_USE: i32 = 1;
 // Request IDs only tag Signal Desktop's promise results, which this API does not report.
 const UNUSED_REQUEST_ID: u32 = 0;
 
-// kAdmMaxDeviceNameSize and kAdmMaxGuidSize in WebRTC's audio_device_defines.h.
+// kAdmMaxDeviceNameSize in WebRTC's audio_device_defines.h.
 const ADM_MAX_DEVICE_NAME_SIZE: usize = 128;
-const ADM_MAX_GUID_SIZE: usize = 128;
-
-// FNV-1a 64-bit parameters, chosen because the hash must not change between builds.
-const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-const FNV_PRIME: u64 = 0x100000001b3;
-const HASHED_DEVICE_ID_PREFIX: &str = "fnv1a:";
 
 #[derive(Clone, Copy, Debug)]
 enum Direction {
@@ -107,17 +99,6 @@ unsafe fn lock<'a>(adm: *const CubebAdm) -> anyhow::Result<MutexGuard<'a, AudioD
     adm.lock().map_err(|e| anyhow!("Mutex was poisoned? {e}"))
 }
 
-/// The ID WebRTC gets for a device: an ID that does not fit its buffer becomes a stable hash.
-fn webrtc_device_id(unique_id: &str) -> String {
-    if unique_id.len() < ADM_MAX_GUID_SIZE {
-        return unique_id.to_string();
-    }
-    let hash = unique_id.bytes().fold(FNV_OFFSET_BASIS, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME)
-    });
-    format!("{HASHED_DEVICE_ID_PREFIX}{hash:016x}")
-}
-
 fn list_devices(
     adm: &mut AudioDeviceModule,
     direction: Direction,
@@ -140,10 +121,12 @@ fn webrtc_devices(
             SYSTEM_DEFAULT_DEVICE_ID.to_string(),
         )
     });
-    let listed = devices
-        .list
-        .iter()
-        .map(|device| (device.name.clone(), webrtc_device_id(&device.unique_id)));
+    let listed = devices.list.iter().map(|device| {
+        (
+            device.name.clone(),
+            webrtc_device_id(&device.unique_id).into_owned(),
+        )
+    });
     Ok(default.into_iter().chain(listed).collect())
 }
 
@@ -171,22 +154,6 @@ fn select_device(
     direction: Direction,
     id: &str,
 ) -> anyhow::Result<()> {
-    let devices = list_devices(adm, direction)?;
-    let id = if id == SYSTEM_DEFAULT_DEVICE_ID {
-        id
-    } else {
-        &devices
-            .list
-            .iter()
-            .find(|d| webrtc_device_id(&d.unique_id) == id)
-            .ok_or_else(|| {
-                anyhow!(
-                    "No {direction:?} device with ID {}",
-                    truncate_for_logging(id)
-                )
-            })?
-            .unique_id
-    };
     match direction {
         Direction::Playout => adm.set_playout_device_by_id(id, UNUSED_REQUEST_ID),
         Direction::Recording => adm.set_recording_device_by_id(id, UNUSED_REQUEST_ID),
@@ -315,7 +282,9 @@ unsafe fn write_device_in_use(
     };
     let (result, device_id) = match in_use {
         DeviceInUse::SystemDefault => (DEVICE_IN_USE, SYSTEM_DEFAULT_DEVICE_ID.to_string()),
-        DeviceInUse::Device(unique_id) => (DEVICE_IN_USE, webrtc_device_id(&unique_id)),
+        DeviceInUse::Device(unique_id) => {
+            (DEVICE_IN_USE, webrtc_device_id(&unique_id).into_owned())
+        }
         DeviceInUse::Unavailable => (NO_DEVICE_IN_USE, String::new()),
     };
     if device_id.len() >= id_size {
@@ -434,15 +403,6 @@ pub unsafe extern "C" fn cubeb_adm_recording_device_name(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn webrtc_device_id_hashes_only_ids_that_do_not_fit() {
-        assert_eq!(webrtc_device_id("alsa_output.pci"), "alsa_output.pci");
-        let long = "x".repeat(200);
-        assert_eq!(webrtc_device_id(&long), "fnv1a:6ee14c8caecd5c45");
-        assert_eq!(webrtc_device_id(&long[..127]), &long[..127]);
-        assert_ne!(webrtc_device_id(&long[..128]), webrtc_device_id(&long));
-    }
 
     #[test]
     fn copy_c_string_cuts_at_char_boundary() {

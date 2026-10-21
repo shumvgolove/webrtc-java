@@ -33,7 +33,8 @@ int16_t cubeb_adm_recording_devices(const CubebAdm* adm);
 int32_t cubeb_adm_playout_device_name(const CubebAdm* adm, uint16_t index, char name[128], char guid[128]);
 int32_t cubeb_adm_recording_device_name(const CubebAdm* adm, uint16_t index, char name[128], char guid[128]);
 
-// An empty id selects the system default device, which follows the OS default.
+// An empty id selects the system default device, which follows the OS default. Any other id is kept
+// as the selection even while no such device is present; meanwhile the fallback setting applies.
 int32_t cubeb_adm_set_playout_device(const CubebAdm* adm, const char* id);
 int32_t cubeb_adm_set_recording_device(const CubebAdm* adm, const char* id);
 
