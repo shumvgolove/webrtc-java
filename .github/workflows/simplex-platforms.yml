@@ -106,6 +106,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0 libx11-6 libxext6 libxfixes3 libxdamage1 libxtst6 libxrandr2 libxcomposite1 libglib2.0-0 libgbm1 libdrm2
 
+      - name: Start PulseAudio
+        run: |
+          sudo apt-get install -y pulseaudio pulseaudio-utils
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci_sink
+          pactl load-module module-null-source source_name=ci_source
+          pactl info
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
