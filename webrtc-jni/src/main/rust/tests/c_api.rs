@@ -590,3 +590,28 @@ fn recording_follows_default_and_falls_back_on_removal() {
     drop(adm);
     assert_eq!(recording_sources(), Vec::<String>::new());
 }
+
+#[test]
+#[ignore = "needs a dedicated PulseAudio server"]
+fn lists_long_device_names_and_ids() {
+    let _server = serialize();
+    // 128 bytes: cutting to fit WebRTC's 128-byte buffer would split the last character.
+    let description = format!("{}é", "A".repeat(126));
+    let _long_name = Device::sink("adm_long_name", &description);
+    // PulseAudio's longest name, which still fits the buffer with its nul terminator.
+    let long_id = format!("adm_{}", "x".repeat(123));
+    let _long_id = Device::sink(&long_id, "Long-ID");
+    pactl(&["set-default-sink", "adm_long_name"]);
+    let adm = Adm::create();
+
+    let devices = adm.playout_devices().expect("stable playout devices");
+    assert_eq!(
+        devices,
+        pairs(&[
+            (&format!("default ({}", "A".repeat(118)), ""),
+            (&"A".repeat(126), "adm_long_name"),
+            ("Long-ID", &long_id),
+        ])
+    );
+    assert_eq!(adm.set_playout_device(&long_id), SUCCESS);
+}
