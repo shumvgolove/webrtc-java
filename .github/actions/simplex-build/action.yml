@@ -41,11 +41,6 @@ inputs:
     required: false
     default: 'false'
 
-  java-version:
-    description: 'The Java build version.'
-    required: false
-    default: '17'
-
   retention-days:
     description: 'How long the artifacts are kept.'
     required: false
@@ -79,24 +74,20 @@ runs:
         restore-keys: maven-${{ inputs.platform-name }}-
 
     - id: jdk-test
-      name: Set up JDK ${{ inputs.java-version }} (${{ inputs.test-java-architecture }}, for the tests)
+      name: Set up JDK 17 (${{ inputs.test-java-architecture }}, for the tests)
       if: inputs.test-java-architecture != ''
       uses: actions/setup-java@v5
       with:
         architecture: ${{ inputs.test-java-architecture }}
-        java-version: ${{ inputs.java-version }}
+        java-version: '17'
         distribution: 'temurin'
 
     # Set up last, so that it is the JAVA_HOME the build runs with.
-    - name: Set up JDK ${{ inputs.java-version }}
+    - name: Set up JDK 17
       uses: actions/setup-java@v5
       with:
-        java-version: ${{ inputs.java-version }}
+        java-version: '17'
         distribution: 'temurin'
-
-    - name: Check rustup
-      run: rustup --version
-      shell: bash
 
     - name: Install the Rust toolchain
       if: hashFiles('webrtc-jni/src/main/rust/rust-toolchain.toml') != ''

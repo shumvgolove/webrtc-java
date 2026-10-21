@@ -100,15 +100,11 @@ jobs:
           name: natives-linux_arm64
           path: natives
 
-      # The natives link libpulse and open libudev and libdbus at runtime.
-      - name: Install runtime libraries
+      # The cubeb audio device module tests need a sound server with devices.
+      - name: Install runtime libraries and start PulseAudio
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpulse0 libx11-6 libxext6 libxfixes3 libxdamage1 libxtst6 libxrandr2 libxcomposite1 libglib2.0-0 libgbm1 libdrm2
-
-      - name: Start PulseAudio
-        run: |
-          sudo apt-get install -y pulseaudio pulseaudio-utils
+          sudo apt-get install -y pulseaudio pulseaudio-utils libx11-6 libxext6 libxfixes3 libxdamage1 libxtst6 libxrandr2 libxcomposite1 libglib2.0-0 libgbm1 libdrm2
           pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=ci_sink
           pactl load-module module-null-source source_name=ci_source
@@ -119,14 +115,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-
-      - name: Ensure Maven
-        run: |
-          if ! command -v mvn >/dev/null 2>&1; then
-            curl -sSLo maven.zip https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip
-            unzip -q maven.zip -d "$RUNNER_TEMP/maven"
-            echo "$RUNNER_TEMP/maven/apache-maven-3.9.9/bin" >> "$GITHUB_PATH"
-          fi
 
       - name: Set the project version
         if: inputs.version != ''
