@@ -2,3 +2,11 @@
 	path = webrtc-java-media/third-party/ffmpeg
 	url = https://github.com/FFmpeg/FFmpeg.git
 	shallow = true
+[submodule "webrtc-jni/src/main/rust/third_party/ringrtc"]
+	path = webrtc-jni/src/main/rust/third_party/ringrtc
+	url = https://github.com/shumvgolove/ringrtc
+	branch = simplex
+[submodule "webrtc-jni/src/main/rust/third_party/cubeb-rs"]
+	path = webrtc-jni/src/main/rust/third_party/cubeb-rs
+	url = https://github.com/shumvgolove/cubeb-rs
+	branch = simplex
