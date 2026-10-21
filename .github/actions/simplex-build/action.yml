@@ -7,6 +7,10 @@ inputs:
     description: 'The target platform.'
     required: true
 
+  classifier:
+    description: 'The Maven classifier of the natives.'
+    required: true
+
   profile:
     description: 'The Maven profile that selects a cross compiled classifier. Empty for the runner''s own.'
     required: false
@@ -100,11 +104,12 @@ runs:
       run: rustup toolchain install
       shell: bash
 
+    # The target directory is the one cubeb-adm/CMakeLists.txt passes to cargo.
     - name: Set up Rust cache
       if: hashFiles('webrtc-jni/src/main/rust/Cargo.lock') != ''
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: webrtc-jni/src/main/rust -> target
+        workspaces: webrtc-jni/src/main/rust -> ../../../target/${{ inputs.classifier }}/dependencies/cubeb-adm/cargo
         key: ${{ inputs.platform-name }}
 
     # After the cache steps, whose keys hash the poms.
@@ -142,7 +147,7 @@ runs:
       uses: actions/upload-artifact@v7
       with:
         name: natives-${{ inputs.platform-name }}
-        path: webrtc-jni/target/webrtc-java-*.jar
+        path: webrtc-jni/target/webrtc-java-*-${{ inputs.classifier }}.jar
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
         overwrite: true
