@@ -135,6 +135,17 @@ runs:
         path: ~/webrtc/build
         key: ${{ steps.libwebrtc-cache.outputs.cache-primary-key }}
 
+    # The cubeb audio device module tests need a sound server with devices.
+    - name: Start PulseAudio
+      if: inputs.test == 'true' && runner.os == 'Linux'
+      run: |
+        sudo apt-get install -y pulseaudio pulseaudio-utils
+        pulseaudio --start --exit-idle-time=-1
+        pactl load-module module-null-sink sink_name=ci_sink
+        pactl load-module module-null-source source_name=ci_source
+        pactl info
+      shell: bash
+
     - name: Test
       if: inputs.test == 'true'
       env:
