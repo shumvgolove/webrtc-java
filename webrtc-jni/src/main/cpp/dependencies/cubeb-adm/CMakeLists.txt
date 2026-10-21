@@ -12,7 +12,8 @@ set(RINGRTC_BRIDGE_SOURCE "${SIGNAL_WEBRTC_DIR}/ringrtc/rffi/src/audio_device.cc
 set(RINGRTC_RFFI_API_DIR "${CUBEB_ADM_CRATE_DIR}/third_party/ringrtc/src/rust/src/webrtc_include")
 set(RINGRTC_RFFI_API_HEADERS audio_device_intf.h rffi_defs.h)
 
-set(CUBEB_ADM_CARGO_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo")
+# Short, as MSBuild in cubeb's CMake cannot create its logs under paths longer than MAX_PATH.
+set(CUBEB_ADM_CARGO_TARGET_DIR "${CMAKE_BINARY_DIR}/cargo")
 set(CUBEB_ADM_LIB "${CUBEB_ADM_CARGO_TARGET_DIR}/${CUBEB_ADM_RUST_TARGET}/release/${CMAKE_STATIC_LIBRARY_PREFIX}cubeb_adm${CMAKE_STATIC_LIBRARY_SUFFIX}")
 
 string(REPLACE "-" "_" RUST_TARGET_ENV "${CUBEB_ADM_RUST_TARGET}")
