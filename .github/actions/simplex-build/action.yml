@@ -32,6 +32,11 @@ inputs:
     required: false
     default: 'false'
 
+  upload-libwebrtc:
+    description: 'Whether to upload the libwebrtc install directory too.'
+    required: false
+    default: 'false'
+
   java-version:
     description: 'The Java build version.'
     required: false
@@ -45,11 +50,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - id: webrtc-branch
+      name: Derive the WebRTC branch from the pom
+      run: echo "name=$(sed -n 's|.*<webrtc.branch>branch-heads/\([^<]*\)</webrtc.branch>.*|\1|p' webrtc-jni/pom.xml)" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    # The path is the default webrtc.install.dir of webrtc-jni/pom.xml. A pom
+    # change alone falls back to the previous build of the same CMake files.
     - id: libwebrtc-cache
-      name: Restore libwebrtc
-      uses: ./.github/actions/simplex-libwebrtc-cache
+      name: Restore libwebrtc cache
+      uses: actions/cache/restore@v6
       with:
-        platform-name: ${{ inputs.platform-name }}
+        path: ~/webrtc/build
+        key: webrtc-${{ steps.webrtc-branch.outputs.name }}-${{ inputs.platform-name }}-${{ hashFiles('webrtc-jni/src/main/cpp/dependencies/webrtc/CMakeLists.txt', 'webrtc-jni/src/main/cpp/dependencies/webrtc/patches/**') }}-${{ hashFiles('webrtc-jni/pom.xml') }}
+        restore-keys: webrtc-${{ steps.webrtc-branch.outputs.name }}-${{ inputs.platform-name }}-${{ hashFiles('webrtc-jni/src/main/cpp/dependencies/webrtc/CMakeLists.txt', 'webrtc-jni/src/main/cpp/dependencies/webrtc/patches/**') }}-
 
     - name: Set up Maven cache
       uses: actions/cache@v6
@@ -141,4 +155,22 @@ runs:
         path: webrtc/target/webrtc-java-*.jar
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
+        overwrite: true
+
+    - id: libwebrtc-dir
+      name: Locate libwebrtc
+      if: inputs.upload-libwebrtc == 'true'
+      run: |
+        du -sh ~/webrtc/build/*
+        echo "path=$HOME/webrtc/build" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: Upload libwebrtc
+      if: inputs.upload-libwebrtc == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: libwebrtc-${{ inputs.platform-name }}
+        path: ${{ steps.libwebrtc-dir.outputs.path }}
+        if-no-files-found: error
+        retention-days: 30
         overwrite: true
