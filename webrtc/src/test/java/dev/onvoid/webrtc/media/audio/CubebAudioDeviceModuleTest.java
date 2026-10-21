@@ -63,6 +63,84 @@ class CubebAudioDeviceModuleTest {
 	}
 
 	@Test
+	void initialDevicesInUseAreTheListedDefaults() {
+		assertDefaultInUse("playout", module.getPlayoutDevices(), module.getPlayoutDeviceInUse());
+		assertDefaultInUse("recording", module.getRecordingDevices(), module.getRecordingDeviceInUse());
+	}
+
+	@Test
+	void selectedPlayoutDeviceBecomesTheDeviceInUse() throws Exception {
+		Semaphore changes = new Semaphore(0);
+		module.setDevicesChangedListener(changes::release);
+
+		for (AudioDevice device : module.getPlayoutDevices()) {
+			module.setPlayoutDevice(device);
+			awaitChange(changes, () -> device.equals(module.getPlayoutDeviceInUse()), "Playout device not in use: " + device);
+		}
+	}
+
+	@Test
+	void selectedRecordingDeviceBecomesTheDeviceInUse() throws Exception {
+		Semaphore changes = new Semaphore(0);
+		module.setDevicesChangedListener(changes::release);
+
+		for (AudioDevice device : module.getRecordingDevices()) {
+			module.setRecordingDevice(device);
+			awaitChange(changes, () -> device.equals(module.getRecordingDeviceInUse()), "Recording device not in use: " + device);
+		}
+	}
+
+	@Test
+	void removedDeviceFallsBackToDefaultAndReturns() throws Exception {
+		assumeTrue(pactlAvailable(), "Needs a PulseAudio server and pactl");
+
+		Semaphore changes = new Semaphore(0);
+		module.setDevicesChangedListener(changes::release);
+
+		String sinkName = "webrtc_java_test_fallback";
+		AudioDevice sink = selectNewSink(changes, sinkName);
+
+		AudioDevice systemDefault = module.getPlayoutDevices().get(0);
+		assertNull(systemDefault.getDescriptor(), "No system default device listed");
+
+		awaitChange(changes, () -> systemDefault.equals(module.getPlayoutDeviceInUse()), "No fallback to the system default");
+
+		String sinkModule = loadNullSink(sinkName);
+
+		try {
+			awaitChange(changes, () -> sink.equals(module.getPlayoutDeviceInUse()), "No return to the selected device");
+		}
+		finally {
+			pactl("unload-module", sinkModule);
+		}
+	}
+
+	@Test
+	void removedDeviceWithoutFallbackLeavesNoDeviceInUse() throws Exception {
+		assumeTrue(pactlAvailable(), "Needs a PulseAudio server and pactl");
+
+		Semaphore changes = new Semaphore(0);
+		module.setDevicesChangedListener(changes::release);
+		module.setPlayoutFallbackEnabled(false);
+
+		selectNewSink(changes, "webrtc_java_test_no_fallback");
+
+		awaitChange(changes, () -> module.getPlayoutDeviceInUse() == null, "A device is still in use");
+	}
+
+	@Test
+	void absentSelectedDeviceFollowsTheFallbackSetting() throws Exception {
+		Semaphore changes = new Semaphore(0);
+		module.setDevicesChangedListener(changes::release);
+
+		module.setPlayoutDevice(new AudioDevice("Absent", "webrtc_java_test_absent"));
+		assertDefaultInUse("playout", module.getPlayoutDevices(), module.getPlayoutDeviceInUse());
+
+		module.setPlayoutFallbackEnabled(false);
+		awaitChange(changes, () -> module.getPlayoutDeviceInUse() == null, "A device is in use without fallback");
+	}
+
+	@Test
 	void selectNullDeviceThrows() {
 		assertThrows(NullPointerException.class, () -> module.setPlayoutDevice(null));
 		assertThrows(NullPointerException.class, () -> module.setRecordingDevice(null));
@@ -145,6 +223,8 @@ class CubebAudioDeviceModuleTest {
 
 		assertThrows(NullPointerException.class, () -> module.setDefaultPlayoutDevice());
 		assertThrows(NullPointerException.class, () -> module.getPlayoutDevices());
+		assertThrows(NullPointerException.class, () -> module.getPlayoutDeviceInUse());
+		assertThrows(NullPointerException.class, () -> module.setPlayoutFallbackEnabled(false));
 		module = null;
 	}
 
@@ -178,6 +258,34 @@ class CubebAudioDeviceModuleTest {
 		assertNotNull(peerConnection);
 
 		peerConnection.close();
+	}
+
+	// Loads a null sink, selects it for playout and unloads it once it is in use.
+	private AudioDevice selectNewSink(Semaphore changes, String sinkName) throws Exception {
+		String sinkModule = loadNullSink(sinkName);
+
+		try {
+			awaitChange(changes, () -> findListed(module.getPlayoutDevices(), sinkName) != null, "The added sink was not reported");
+
+			AudioDevice sink = findListed(module.getPlayoutDevices(), sinkName);
+
+			module.setPlayoutDevice(sink);
+			awaitChange(changes, () -> sink.equals(module.getPlayoutDeviceInUse()), "The selected sink is not in use");
+
+			return sink;
+		}
+		finally {
+			pactl("unload-module", sinkModule);
+		}
+	}
+
+	private static void assertDefaultInUse(String direction, List<AudioDevice> devices, AudioDevice inUse) {
+		if (!devices.isEmpty() && devices.get(0).getDescriptor() == null) {
+			assertEquals(devices.get(0), inUse, "The " + direction + " system default device must be in use: " + devices);
+		}
+		else if (inUse != null) {
+			assertTrue(devices.contains(inUse), "The " + direction + " device in use " + inUse + " is not listed: " + devices);
+		}
 	}
 
 	private static void assertDeviceList(String direction, List<AudioDevice> devices) {

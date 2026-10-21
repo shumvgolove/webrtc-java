@@ -13,6 +13,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * selected by their stable descriptor and the system default device follows the
  * operating system's default.
  * <p>
+ * While a selected device is missing, the module uses the system default device
+ * instead and returns to the selected device when it is back. This fallback can
+ * be disabled per direction.
+ * <p>
  * When the system has a default device, it comes first in each device list,
  * with a null descriptor. Selecting it selects the system default device.
  */
@@ -99,8 +103,48 @@ public class CubebAudioDeviceModule extends AudioDeviceModuleBase {
 	}
 
 	/**
-	 * Sets the listener notified when the playout or recording device list
-	 * changes, replacing any previous one.
+	 * Enables or disables the playout fallback, which is enabled by default.
+	 * While the selected playout device is missing, an enabled fallback plays
+	 * through the system default device; a disabled one plays through no device
+	 * until the selected device is back or another one is selected.
+	 *
+	 * @param enabled true to use the system default device while the selected
+	 *                one is missing.
+	 */
+	public native void setPlayoutFallbackEnabled(boolean enabled);
+
+	/**
+	 * Enables or disables the recording fallback, which is enabled by default.
+	 * While the selected recording device is missing, an enabled fallback records
+	 * from the system default device; a disabled one records from no device until
+	 * the selected device is back or another one is selected.
+	 *
+	 * @param enabled true to use the system default device while the selected
+	 *                one is missing.
+	 */
+	public native void setRecordingFallbackEnabled(boolean enabled);
+
+	/**
+	 * Gets the playout device the module currently uses, which differs from the
+	 * selected one while the fallback is in effect.
+	 *
+	 * @return the device as listed by {@link #getPlayoutDevices()}, or null if no
+	 *         device is in use.
+	 */
+	public native AudioDevice getPlayoutDeviceInUse();
+
+	/**
+	 * Gets the recording device the module currently uses, which differs from the
+	 * selected one while the fallback is in effect.
+	 *
+	 * @return the device as listed by {@link #getRecordingDevices()}, or null if
+	 *         no device is in use.
+	 */
+	public native AudioDevice getRecordingDeviceInUse();
+
+	/**
+	 * Sets the listener notified when a device list or a device in use changes,
+	 * replacing any previous one.
 	 *
 	 * @param listener The listener, or null to remove the current one.
 	 */
