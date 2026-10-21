@@ -104,12 +104,12 @@ runs:
       run: rustup toolchain install
       shell: bash
 
-    # The target directory is the one cubeb-adm/CMakeLists.txt passes to cargo.
+    # The target directory is the one the JNI CMake build passes to cargo.
     - name: Set up Rust cache
       if: hashFiles('webrtc-jni/src/main/rust/Cargo.lock') != ''
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: webrtc-jni/src/main/rust -> ../../../target/${{ inputs.classifier }}/dependencies/cubeb-adm/cargo
+        workspaces: webrtc-jni/src/main/rust -> ../../../target/${{ inputs.classifier }}/cargo
         key: ${{ inputs.platform-name }}
 
     # After the cache steps, whose keys hash the poms.
@@ -120,16 +120,31 @@ runs:
       run: mvn -B -q org.codehaus.mojo:versions-maven-plugin:2.18.0:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
       shell: bash
 
-    - name: Build
+    - id: build
+      name: Build
       env:
         PROFILE: ${{ inputs.profile }}
       run: mvn -B package -DskipTests -pl webrtc-jni,webrtc ${PROFILE:+-P$PROFILE}
       shell: bash
 
+    # libwebrtc is compiled while CMake configures, but installed only by the
+    # install target after the JNI library links, so install it on its own.
+    - id: libwebrtc-install
+      name: Install libwebrtc after a failed build
+      if: failure() && steps.build.outcome == 'failure' && steps.libwebrtc-cache.outputs.cache-hit != 'true'
+      env:
+        BUILD_DIR: webrtc-jni/target/${{ inputs.classifier }}/dependencies/webrtc
+      run: |
+        test -f "$BUILD_DIR/cmake_install.cmake"
+        cmake --install "$BUILD_DIR" --config Release
+      shell: bash
+
     # Saved before the tests, so that a test failure keeps an hour long build.
     # Caches saved by a tag are visible to that tag only.
     - name: Save libwebrtc cache
-      if: steps.libwebrtc-cache.outputs.cache-hit != 'true' && github.ref_type != 'tag'
+      if: >-
+        !cancelled() && steps.libwebrtc-cache.outputs.cache-hit != 'true' && github.ref_type != 'tag'
+        && (steps.build.outcome == 'success' || steps.libwebrtc-install.outcome == 'success')
       uses: actions/cache/save@v6
       with:
         path: ~/webrtc/build
