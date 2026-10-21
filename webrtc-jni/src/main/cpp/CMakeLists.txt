@@ -48,6 +48,19 @@ endif()
 add_subdirectory(dependencies/webrtc)
 add_subdirectory(dependencies/jni-voithos)
 
+set(CUBEB_ADM_RUST_TARGET_linux_x64 x86_64-unknown-linux-gnu)
+set(CUBEB_ADM_RUST_TARGET_linux_arm64 aarch64-unknown-linux-gnu)
+set(CUBEB_ADM_RUST_TARGET_macos_arm64 aarch64-apple-darwin)
+set(CUBEB_ADM_RUST_TARGET_macos_x64 x86_64-apple-darwin)
+set(CUBEB_ADM_RUST_TARGET_windows_x64 x86_64-pc-windows-msvc)
+set(CUBEB_ADM_RUST_TARGET "${CUBEB_ADM_RUST_TARGET_${SOURCE_TARGET}_${TARGET_CPU}}")
+
+if(CUBEB_ADM_RUST_TARGET)
+    add_subdirectory(dependencies/cubeb-adm)
+else()
+    message(STATUS "Cubeb audio device module: not built for ${SOURCE_TARGET} ${TARGET_CPU}")
+endif()
+
 file(GLOB SOURCES_ROOT "src/*.cpp")
 file(GLOB SOURCES_API "src/api/*.cpp")
 file(GLOB SOURCES_API_AUDIO "src/api/audio/*.cpp")
@@ -105,6 +118,10 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 target_link_libraries(${PROJECT_NAME} jni-voithos)
 target_link_libraries(${PROJECT_NAME} webrtc)
+
+if(CUBEB_ADM_RUST_TARGET)
+    target_link_libraries(${PROJECT_NAME} cubeb-adm)
+endif()
 
 if(APPLE)
     set_source_files_properties(${SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++")
