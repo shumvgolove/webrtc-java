@@ -1,0 +1,107 @@
+name: SimpleX release
+
+# A v<upstream version>-simplex.<n> tag publishes a GitHub release with the
+# main jar, the native jars and SHA256SUMS. A manual run builds the same into a
+# draft release without a tag, to be reviewed and deleted.
+
+on:
+  push:
+    tags:
+      - 'v*-simplex.*'
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version of the draft release, such as 0.19.0-simplex.0. No tag is created."
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Derive the version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" == "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-simplex\.[0-9]+$ ]]; then
+            echo "::error::'$version' does not look like 0.19.0-simplex.1"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  platforms:
+    needs: version
+    uses: ./.github/workflows/simplex-platforms.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    needs: [version, platforms]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download the native jars
+        uses: actions/download-artifact@v8
+        with:
+          pattern: natives-*
+          path: release
+          merge-multiple: true
+
+      - name: Download the main jar
+        uses: actions/download-artifact@v8
+        with:
+          name: main-jar
+          path: release
+
+      - name: Verify the jars and write SHA256SUMS
+        working-directory: release
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          status=0
+          for jar in webrtc-java-$VERSION.jar \
+                     webrtc-java-$VERSION-{linux-x86_64,linux-aarch64,macos-aarch64,macos-x86_64,windows-x86_64}.jar; do
+            if [ ! -f "$jar" ]; then
+              echo "::error::Missing $jar"
+              status=1
+            fi
+          done
+          if [ "$(find . -type f | wc -l)" -ne 6 ]; then
+            echo "::error::Expected exactly six jars"
+            status=1
+          fi
+          ls -l
+          [ $status -eq 0 ] || exit $status
+          sha256sum -- *.jar > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          notes="webrtc-java $VERSION for SimpleX Chat, built from $GITHUB_SHA."
+          if [ "$GITHUB_REF_TYPE" == "tag" ]; then
+            gh release create "$tag" release/* -R "$GITHUB_REPOSITORY" --verify-tag -t "$tag" -n "$notes"
+          else
+            gh release create "$tag" release/* -R "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" -t "$tag" -n "$notes"
+          fi
