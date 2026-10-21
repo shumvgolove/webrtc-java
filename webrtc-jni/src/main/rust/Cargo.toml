@@ -1,0 +1,45 @@
+[package]
+name = "cubeb-adm"
+version = "0.1.0"
+edition = "2024"
+description = "Signal's cubeb audio device module behind a C API for webrtc-java"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "cubeb_adm"
+# rlib only links the Rust tests; the C++ bridge links the staticlib.
+crate-type = ["staticlib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+regex-aot = { path = "third_party/ringrtc/src/rust/regex-aot" }
+
+anyhow         = { version = "1.0.100" }
+cubeb          = { version = "0.38.0", features = ["no-private-apis-in-coreaudio"] }
+cubeb-core     = { version = "0.38.0", features = ["no-private-apis-in-coreaudio"] }
+libc           = { version = "0.2.178" }
+log            = { version = "0.4.29", features = ["std", "max_level_trace", "release_max_level_info"] }
+regex-automata = { version = "0.4.13", default-features = false, features = ["dfa", "perf", "std"] }
+thiserror      = { version = "2.0.17" }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_System_Com"] }
+
+[patch.crates-io]
+cubeb      = { path = "third_party/cubeb-rs/cubeb-api" }
+cubeb-core = { path = "third_party/cubeb-rs/cubeb-core" }
+cubeb-sys  = { path = "third_party/cubeb-rs/cubeb-sys" }
+
+[workspace]
+resolver = "2"
+exclude = ["third_party"]
+
+[workspace.lints.clippy]
+unnecessary_wraps = "warn"
+
+[workspace.lints.rust]
+# Signal's ADM keeps RingRTC's cfg(feature = "sim") paths, which this crate never enables.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("sim"))'] }
