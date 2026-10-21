@@ -1,0 +1,45 @@
+name: SimpleX libwebrtc
+
+# Uploads the cached linux_x86-64 libwebrtc install directory (lib and include)
+# for building the JNI library locally against it. It builds nothing: run
+# SimpleX build on the same branch first.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - id: libwebrtc-cache
+        name: Restore libwebrtc
+        uses: ./.github/actions/simplex-libwebrtc-cache
+        with:
+          platform-name: linux_x86-64
+
+      - id: install-dir
+        name: Check the restored libwebrtc
+        env:
+          MATCHED_KEY: ${{ steps.libwebrtc-cache.outputs.cache-matched-key }}
+        run: |
+          if [ -z "$MATCHED_KEY" ]; then
+            echo "::error::No linux_x86-64 libwebrtc cache on this branch or the default branch"
+            exit 1
+          fi
+          du -sh ~/webrtc/build/*
+          echo "path=$HOME/webrtc/build" >> "$GITHUB_OUTPUT"
+          echo "name=lib$MATCHED_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Upload libwebrtc
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.install-dir.outputs.name }}
+          path: ${{ steps.install-dir.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
