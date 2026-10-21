@@ -171,7 +171,24 @@ unsafe fn set_device(
         bail!("null device ID");
     }
     let id = unsafe { CStr::from_ptr(id) }.to_str()?;
-    select_device(&mut *unsafe { lock(adm) }?, direction, id)
+    unsafe { apply(adm, |adm| select_device(adm, direction, id)) }
+}
+
+/// Runs `request` on the module, then waits until the worker has handled it.
+///
+/// # Safety
+/// `adm` as for [`lock`].
+unsafe fn apply(
+    adm: *const CubebAdm,
+    request: impl FnOnce(&mut AudioDeviceModule) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    let applied = {
+        let mut adm = unsafe { lock(adm) }?;
+        request(&mut adm)?;
+        adm.flush()?
+    };
+    // Wait unlocked: while handling the request, the worker may notify a callback that calls in.
+    Ok(applied.recv()?)
 }
 
 #[unsafe(no_mangle)]
@@ -247,7 +264,7 @@ pub unsafe extern "C" fn cubeb_adm_set_playout_fallback(
     enabled: bool,
 ) -> i32 {
     status(
-        unsafe { lock(adm) }.and_then(|mut adm| adm.set_playout_fallback(enabled)),
+        unsafe { apply(adm, |adm| adm.set_playout_fallback(enabled)) },
         "cubeb_adm_set_playout_fallback",
     )
 }
@@ -260,7 +277,7 @@ pub unsafe extern "C" fn cubeb_adm_set_recording_fallback(
     enabled: bool,
 ) -> i32 {
     status(
-        unsafe { lock(adm) }.and_then(|mut adm| adm.set_recording_fallback(enabled)),
+        unsafe { apply(adm, |adm| adm.set_recording_fallback(enabled)) },
         "cubeb_adm_set_recording_fallback",
     )
 }

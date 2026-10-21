@@ -35,6 +35,8 @@ int32_t cubeb_adm_recording_device_name(const CubebAdm* adm, uint16_t index, cha
 
 // An empty id selects the system default device, which follows the OS default. Any other id is kept
 // as the selection even while no such device is present; meanwhile the fallback setting applies.
+// Returns once the selection is applied, so cubeb_adm_get_*_device_in_use already reflects it; do
+// not call it from the devices-changed callback, which runs on the thread that applies it.
 int32_t cubeb_adm_set_playout_device(const CubebAdm* adm, const char* id);
 int32_t cubeb_adm_set_recording_device(const CubebAdm* adm, const char* id);
 
@@ -45,6 +47,7 @@ int32_t cubeb_adm_set_devices_changed_callback(const CubebAdm* adm, CubebAdmDevi
 // While the selected device is missing, a direction uses the system default if fallback is enabled
 // (the default), otherwise no device until the selected one returns or another is selected. The
 // selection is kept either way. Per direction, so the microphone can stay off while playout falls back.
+// Returns once applied, like cubeb_adm_set_*_device.
 int32_t cubeb_adm_set_playout_fallback(const CubebAdm* adm, bool enabled);
 int32_t cubeb_adm_set_recording_fallback(const CubebAdm* adm, bool enabled);
 
