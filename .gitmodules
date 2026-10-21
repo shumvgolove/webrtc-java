@@ -10,3 +10,8 @@
 	path = webrtc-jni/src/main/rust/third_party/cubeb-rs
 	url = https://github.com/shumvgolove/cubeb-rs
 	branch = simplex
+[submodule "webrtc-jni/src/main/cpp/dependencies/signal-webrtc"]
+	path = webrtc-jni/src/main/cpp/dependencies/signal-webrtc
+	url = https://github.com/shumvgolove/signal-webrtc.git
+	shallow = true
+	branch = simplex
