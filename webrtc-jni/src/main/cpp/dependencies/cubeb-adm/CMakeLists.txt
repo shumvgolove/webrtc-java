@@ -66,6 +66,9 @@ elseif(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
 elseif(WIN32)
     # Match the static MSVC runtime (/MT) of the JNI library.
     list(APPEND CARGO_ENV "CARGO_TARGET_${RUST_TARGET_ENV_UPPER}_RUSTFLAGS=-Ctarget-feature=+crt-static")
+    # Inside MSBuild, cc-rs uses cl.exe with the inherited INCLUDE of the ClangCL
+    # toolset, which lists clang's headers first; without it, cc-rs sets up MSVC itself.
+    list(APPEND CARGO_ENV "--unset=VSTEL_MSBuildProjectFullPath")
 endif()
 
 # Cargo decides what to rebuild; running it is a no-op when nothing changed.
