@@ -151,6 +151,21 @@ impl ServerEvents {
         }
     }
 
+    /// The lines up to and including the first that contains `event`.
+    fn lines_until(&self, event: &str) -> Vec<String> {
+        let mut lines = Vec::new();
+        loop {
+            match self.lines.recv_timeout(EVENT_TIMEOUT) {
+                Ok(line) if line.contains(event) => {
+                    lines.push(line);
+                    return lines;
+                }
+                Ok(line) => lines.push(line),
+                Err(e) => panic!("no {event:?} event: {e}"),
+            }
+        }
+    }
+
     fn wait_for(&self, event: &str) {
         loop {
             match self.lines.recv_timeout(EVENT_TIMEOUT) {
@@ -856,4 +871,38 @@ fn no_fallback_waits_for_absent_selected_device() {
     events.wait_for("'new' on source-output");
     assert_eq!(recording_sources(), ["adm_usb_mic"]);
     assert_eq!(recording_corked(), [false]);
+}
+
+#[test]
+#[ignore = "needs a dedicated PulseAudio server"]
+fn absent_selection_without_fallback_never_opens_microphone() {
+    let _server = serialize();
+    let _mic = Device::source("adm_mic", "Mic");
+    pactl(&["set-default-source", "adm_mic"]);
+    let events = ServerEvents::subscribe();
+    let changes = Notifications::default();
+    let adm = Adm::create();
+    assert_eq!(adm.set_devices_changed(Some(&changes)), SUCCESS);
+    adm.set_recording_fallback(false);
+    assert_eq!(adm.set_recording_device("adm_usb_mic"), SUCCESS);
+    assert_eq!(
+        adm.recording_in_use(),
+        None,
+        "applied when the call returns"
+    );
+    adm.start_recording();
+
+    // Once the ADM lists the new sink, its worker has handled the start, and a module loaded
+    // after that is announced after any source-output that the start created.
+    let _speaker = Device::sink("adm_speaker", "Speaker");
+    changes.wait_until(|| {
+        adm.playout_devices()
+            .is_some_and(|d| d.contains(&pair("Speaker", "adm_speaker")))
+    });
+    let marker = Device::sink("adm_marker", "Marker");
+    let lines = events.lines_until(&format!("'new' on module #{}", marker.module));
+    assert!(
+        !lines.iter().any(|line| line.contains("on source-output")),
+        "a source-output appeared: {lines:?}"
+    );
 }
