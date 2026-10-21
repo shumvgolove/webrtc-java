@@ -48,6 +48,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Prepare build
         if: runner.os == 'Linux'
@@ -87,11 +89,11 @@ jobs:
           name: natives-linux_arm64
           path: natives
 
-      # The natives open PulseAudio, libudev and libdbus at runtime only.
+      # The natives link libpulse and open libudev and libdbus at runtime.
       - name: Install runtime libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-6 libxext6 libxfixes3 libxdamage1 libxtst6 libxrandr2 libxcomposite1 libglib2.0-0 libgbm1 libdrm2
+          sudo apt-get install -y libpulse0 libx11-6 libxext6 libxfixes3 libxdamage1 libxtst6 libxrandr2 libxcomposite1 libglib2.0-0 libgbm1 libdrm2
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
