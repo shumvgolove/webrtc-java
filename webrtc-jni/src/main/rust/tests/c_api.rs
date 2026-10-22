@@ -906,3 +906,90 @@ fn absent_selection_without_fallback_never_opens_microphone() {
         "a source-output appeared: {lines:?}"
     );
 }
+
+/// What each devices-changed callback saw: the playout device in use and the listed IDs.
+struct Snapshots {
+    handle: *const CubebAdm,
+    seen: Mutex<Vec<(Option<String>, Vec<String>)>>,
+}
+
+extern "C" fn record_snapshot(context: *mut c_void) {
+    let snapshots = unsafe { &*(context as *const Snapshots) };
+    let mut id = [0u8; NAME_SIZE];
+    let result = unsafe {
+        cubeb_adm_get_playout_device_in_use(snapshots.handle, id.as_mut_ptr().cast(), id.len())
+    };
+    let in_use = (result == DEVICE_IN_USE).then(|| {
+        CStr::from_bytes_until_nul(&id)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+    });
+    let count = unsafe { cubeb_adm_playout_devices(snapshots.handle) };
+    let listed = (0..u16::try_from(count).unwrap())
+        .filter_map(|index| {
+            let mut name = [0u8; NAME_SIZE];
+            let mut guid = [0u8; NAME_SIZE];
+            let copied = unsafe {
+                cubeb_adm_playout_device_name(
+                    snapshots.handle,
+                    index,
+                    name.as_mut_ptr().cast(),
+                    guid.as_mut_ptr().cast(),
+                )
+            };
+            (copied == SUCCESS).then(|| {
+                CStr::from_bytes_until_nul(&guid)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            })
+        })
+        .collect();
+    snapshots.seen.lock().unwrap().push((in_use, listed));
+}
+
+#[test]
+#[ignore = "needs a dedicated PulseAudio server"]
+fn device_in_use_is_listed_when_notified() {
+    // Reloads of the selected speaker, each removing and adding the device in use.
+    const RELOADS: usize = 30;
+    let _server = serialize();
+    let _speaker = Device::sink("adm_speaker", "Speaker");
+    let mut usb = Device::sink("adm_usb", "USB");
+    pactl(&["set-default-sink", "adm_speaker"]);
+    let adm = Adm::create();
+    adm.set_playout_fallback(false);
+    assert_eq!(adm.set_playout_device("adm_usb"), SUCCESS);
+    adm.start_playout();
+    let snapshots = Snapshots {
+        handle: adm.handle,
+        seen: Mutex::new(Vec::new()),
+    };
+    let context = std::ptr::from_ref(&snapshots).cast_mut().cast();
+    let set_callback =
+        |callback| unsafe { cubeb_adm_set_devices_changed_callback(adm.handle, callback, context) };
+    assert_eq!(set_callback(Some(record_snapshot)), SUCCESS);
+    for _ in 0..RELOADS {
+        usb.unload();
+        usb = Device::sink("adm_usb", "USB");
+    }
+    assert_eq!(set_callback(None), SUCCESS);
+    // Returns once the worker no longer calls record_snapshot.
+    adm.set_playout_fallback(false);
+
+    let seen = snapshots.seen.lock().unwrap();
+    let unlisted: Vec<_> = seen
+        .iter()
+        .filter(|(in_use, listed)| in_use.as_ref().is_some_and(|id| !listed.contains(id)))
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "device in use not listed in {} of {} callbacks: {:?}",
+        unlisted.len(),
+        seen.len(),
+        unlisted.first()
+    );
+}
