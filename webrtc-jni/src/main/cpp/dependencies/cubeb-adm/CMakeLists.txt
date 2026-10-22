@@ -71,6 +71,53 @@ elseif(WIN32)
     list(APPEND CARGO_ENV "--unset=VSTEL_MSBuildProjectFullPath")
 endif()
 
+# License texts of the code linked in, installed beside webrtc's (see ../../CMakeLists.txt).
+set(LICENSE_DIR "${CMAKE_CURRENT_BINARY_DIR}/licenses")
+set(CUBEB_DIR "${CUBEB_ADM_CRATE_DIR}/third_party/cubeb-rs/cubeb-sys/libcubeb")
+set(CUBEB_BACKEND_BUILD_DIR "${CUBEB_ADM_CARGO_TARGET_DIR}/${CUBEB_ADM_RUST_TARGET}/release/build/cubeb-sys-*/out/libcubeb/src")
+
+configure_file("${CUBEB_ADM_CRATE_DIR}/third_party/ringrtc/LICENSE" "${LICENSE_DIR}/ringrtc/LICENSE" COPYONLY)
+configure_file("${CUBEB_ADM_CRATE_DIR}/third_party/cubeb-rs/LICENSE" "${LICENSE_DIR}/cubeb-rs/LICENSE" COPYONLY)
+configure_file("${CUBEB_DIR}/LICENSE" "${LICENSE_DIR}/cubeb/LICENSE" COPYONLY)
+
+# The bridge and the bundled speex resampler state their licenses in their source headers.
+foreach(NOTICE_SOURCE "signal-webrtc;${RINGRTC_BRIDGE_SOURCE}" "speex;${CUBEB_DIR}/subprojects/speex/resample.c")
+    list(GET NOTICE_SOURCE 0 NOTICE_NAME)
+    list(GET NOTICE_SOURCE 1 NOTICE_FILE)
+    file(READ "${NOTICE_FILE}" SOURCE_TEXT)
+    string(REGEX MATCH "^/\\*([^*]|\\*+[^*/])*\\*+/" NOTICE "${SOURCE_TEXT}")
+    file(WRITE "${LICENSE_DIR}/${NOTICE_NAME}/NOTICE" "${NOTICE}\n")
+endforeach()
+
+execute_process(COMMAND rustc --print sysroot WORKING_DIRECTORY "${CUBEB_ADM_CRATE_DIR}"
+    OUTPUT_VARIABLE RUST_SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE)
+configure_file("${RUST_SYSROOT}/share/doc/rust/COPYRIGHT-library.html" "${LICENSE_DIR}/rust-std/COPYRIGHT-library.html" COPYONLY)
+
+# Collected anew after each cargo build, so a version bump leaves no stale texts.
+set(CRATE_LICENSE_COMMANDS
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${LICENSE_DIR}/crates
+    COMMAND ${CMAKE_COMMAND} -DCARGO=${CARGO_EXECUTABLE} -DMANIFEST=${CUBEB_ADM_CRATE_DIR}/Cargo.toml
+        -DTARGET=${CUBEB_ADM_RUST_TARGET} -DOUTPUT=${LICENSE_DIR}/crates -P ${CMAKE_CURRENT_SOURCE_DIR}/CrateLicenses.cmake
+)
+
+# cubeb links its Rust backend for the platform, which cargo builds inside cubeb-sys's OUT_DIR.
+if(LINUX)
+    set(CUBEB_BACKEND cubeb-pulse-rs)
+elseif(APPLE)
+    set(CUBEB_BACKEND cubeb-coreaudio-rs)
+endif()
+
+if(CUBEB_BACKEND)
+    configure_file("${CUBEB_DIR}/src/${CUBEB_BACKEND}/LICENSE" "${LICENSE_DIR}/${CUBEB_BACKEND}/LICENSE" COPYONLY)
+    list(APPEND CRATE_LICENSE_COMMANDS
+        COMMAND ${CMAKE_COMMAND} -DCARGO=${CARGO_EXECUTABLE} -DMANIFEST=${CUBEB_BACKEND_BUILD_DIR}/${CUBEB_BACKEND}/Cargo.toml
+            -DFEATURES=gecko-in-tree -DTARGET=${CUBEB_ADM_RUST_TARGET} -DOUTPUT=${LICENSE_DIR}/crates
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/CrateLicenses.cmake
+    )
+endif()
+
+install(DIRECTORY "${LICENSE_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/META-INF/licenses/cubeb-adm" COMPONENT Runtime)
+
 # Cargo decides what to rebuild; running it is a no-op when nothing changed.
 # The crate directory is the working directory so its rust-toolchain.toml applies.
 add_custom_target(cubeb-adm-cargo
@@ -78,6 +125,7 @@ add_custom_target(cubeb-adm-cargo
         "${CARGO_EXECUTABLE}" build --release --locked
         --target ${CUBEB_ADM_RUST_TARGET}
         --target-dir "${CUBEB_ADM_CARGO_TARGET_DIR}"
+    ${CRATE_LICENSE_COMMANDS}
     WORKING_DIRECTORY "${CUBEB_ADM_CRATE_DIR}"
     BYPRODUCTS "${CUBEB_ADM_LIB}"
     USES_TERMINAL
